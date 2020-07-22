@@ -1,7 +1,7 @@
 KDIR := /lib/modules/$(shell uname -r)/build
 
 obj-m += netlinkKernel.o
-
+CFLAGS_netlinkKernel.o := $(CFLAGS)
 all:
 	$(MAKE) -C $(KDIR) SUBDIRS=$(PWD) modules
 

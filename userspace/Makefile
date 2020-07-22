@@ -2,7 +2,7 @@ EXEC=netlinkUser
 OBJS=netlinkUser.o
 
 all: $(OBJS)
-	$(CC) $^ -o $(EXEC)
+	$(CC) $(CFLAGS) $^ -o $(EXEC)
 
 clean:
 	rm -rf *.o $(EXEC)
