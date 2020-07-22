@@ -28,7 +28,7 @@ static void hello_nl_recv_msg(struct sk_buff *skb) {
   printk(KERN_INFO "Netlink received msg payload:%s\n",(char*)nlmsg_data(nlh));
   pid = nlh->nlmsg_pid; /*pid of sending process */
 
-#ifndef NETLINK_MULTICAST 
+#ifdef NETLINK_UNICAST
   char *msg=MSG_UNICAST;
   msg_size=strlen(msg);
 
@@ -41,10 +41,12 @@ static void hello_nl_recv_msg(struct sk_buff *skb) {
   nlh=nlmsg_put(skb_out,0,0,NLMSG_DONE,msg_size,0);  
   NETLINK_CB(skb_out).dst_group = 0; /* not in mcast group */
   strncpy(nlmsg_data(nlh), msg, msg_size);
+  printk(KERN_INFO "send unicast netlink message:%s\n",(char*)nlmsg_data(nlh));
   res=nlmsg_unicast(nl_sk,skb_out,pid);
-#else
-  char *msg=MSG_MULTICAST;
-  msg_size=strlen(msg);
+#endif
+#ifdef NETLINK_MULTICAST 
+  char *msg_mc=MSG_MULTICAST;
+  msg_size=strlen(msg_mc);
   
   skb_out = nlmsg_new(msg_size,0);
   if(!skb_out){
@@ -53,8 +55,9 @@ static void hello_nl_recv_msg(struct sk_buff *skb) {
   } 
   nlh=nlmsg_put(skb_out,0,0,NLMSG_DONE,msg_size,0);  
 
-  NETLINK_CB(skb_out).dst_group = NETLINK_USER_GROUP; /* not in mcast group */ 
-  strncpy(nlmsg_data(nlh), msg, msg_size);
+  //NETLINK_CB(skb_out).dst_group = NETLINK_USER_GROUP; /* mcast group */ 
+  strncpy(nlmsg_data(nlh), msg_mc, msg_size);
+  printk(KERN_INFO "send multicast netlink message:%s\n",(char*)nlmsg_data(nlh));
   res=nlmsg_multicast(nl_sk, skb_out, 0, NETLINK_USER_GROUP, GFP_KERNEL);
 #endif
 
