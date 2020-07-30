@@ -64,18 +64,18 @@ static int genlmsg_open(void)
     int sockfd;
     struct sockaddr_nl nladdr;
     int ret;
- 
+
     sockfd = socket(AF_NETLINK, SOCK_RAW, NETLINK_GENERIC);
     if (sockfd < 0)
     {
-        printf("socket: %m");
+        printf("socket: %m\n");
         return -1;
     }
- 
+
     memset(&nladdr, 0, sizeof(nladdr));
     nladdr.nl_family = AF_NETLINK;
     nladdr.nl_pid = getpid();
-    nladdr.nl_groups = 0xffffffff; //这个是mask值，如果family ID & nl_groups为0，
+    //nladdr.nl_groups = 0xffffffff; //这个是mask值，如果family ID & nl_groups为0，
                                    //则这个family的广播就接收不到，所以这里设为0xffffffff就可以接收所有的family消息
  
     ret = bind(sockfd, (struct sockaddr *)&nladdr, sizeof(nladdr));
@@ -181,6 +181,16 @@ static int genlmsg_send(int sockfd, unsigned short nlmsg_type, unsigned int nlms
     memset(&nladdr, 0, sizeof(nladdr));
     nladdr.nl_family = AF_NETLINK;
  
+#if 1
+unsigned char *tmp=(char*)buf;
+int tlen=0;
+while(tlen<len) {
+  if(tlen%8==0) printf("\n");
+  printf("%02x ", *((char *)tmp+tlen));
+  tlen++;
+}
+printf("\n");
+#endif
     count = 0;
     ret = 0;
     do {
@@ -206,7 +216,7 @@ static int genlmsg_send(int sockfd, unsigned short nlmsg_type, unsigned int nlms
 out:
     genlmsg_free(buf);
  
-    printf("send return %d", count);
+    printf("send return %d\n", count);
     return count;
 }
  
@@ -229,7 +239,7 @@ static int genlmsg_recv(int sockfd, unsigned char *buf, unsigned int len)
  
     nladdr.nl_family = AF_NETLINK;
     nladdr.nl_pid = getpid();
-    nladdr.nl_groups = 0xffffffff;
+//    nladdr.nl_groups = 0xffffffff;
  
     iov.iov_base = buf;
     iov.iov_len = len;
@@ -243,7 +253,7 @@ static int genlmsg_recv(int sockfd, unsigned char *buf, unsigned int len)
     msg.msg_flags = 0;
     ret = recvmsg(sockfd, &msg, 0);
     ret = ret > 0 ? ret : -1;
-    printf("recv return %d", ret);
+    printf("recv return %d\n", ret);
     return ret;
 }
  
@@ -261,45 +271,63 @@ static int genlmsg_dispatch(struct nlmsghdr *nlmsghdr, unsigned int nlh_len,
  
     if (!nlmsghdr || !buf || !len)
         return -1;
- 
-    printf("nlmsg_type = %d", nlmsghdr->nlmsg_type);
-    if (nlmsg_type && (nlmsghdr->nlmsg_type != nlmsg_type))
+
+#if 1
+char *tmp=(char*)nlmsghdr;
+int tlen=0;
+while(tlen<nlh_len) {
+  if(tlen%8==0) printf("\n");
+  printf("%.02x ", *((char *)tmp+tlen));
+  tlen++;
+}
+printf("\n");
+#endif
+    printf("nlmsg_type = %d\n", nlmsghdr->nlmsg_type);
+#if 0
+    if (nlmsg_type && (nlmsghdr->nlmsg_type != nlmsg_type)){
+        printf("[%s] nlmsg_type=%d, nlmsghdr->nlmsg_type=%d\n", __FUNCTION__, nlmsg_type, nlmsghdr->nlmsg_type);
         return -1;
- 
+    }
+#endif
+
     //读取到的数据流里面，可能会包含多条nlmsg
     for (nlh = nlmsghdr; NLMSG_OK(nlh, nlh_len); nlh = NLMSG_NEXT(nlh, nlh_len))
     {
         /* The end of multipart message. */
         if (nlh->nlmsg_type == NLMSG_DONE)
         {
-            printf("get NLMSG_DONE");
+            printf("get NLMSG_DONE\n");
             ret = 0;
             break;
         }
  
         if (nlh->nlmsg_type == NLMSG_ERROR)
         {
-            printf("get NLMSG_ERROR");
+            printf("get NLMSG_ERROR\n");
             ret = -1;
             break;
         }
- 
-        glh = (struct genlmsghdr *)NLMSG_DATA(nlh);
-        nla = (struct nlattr *)GENLMSG_DATA(glh);   //the first attribute
-        nla_len = nlh->nlmsg_len - GENL_HDRLEN;           //len of attributes
-        for (i = 0; NLA_OK(nla, nla_len); nla = NLA_NEXT(nla, nla_len), ++i)
-        {
-            //一条nlmsg里面，可能会包含多个attr
-            printf("%d. nla->nla_type = %d", i, nla->nla_type);
-            /* Match the family ID, copy the data to user */
-            if (nla_type == nla->nla_type)
+
+	if(nlmsghdr->nlmsg_type == NETLINK_GENERIC){ 
+            glh = (struct genlmsghdr *)NLMSG_DATA(nlh);
+            nla = (struct nlattr *)GENLMSG_DATA(glh);   //the first attribute
+            nla_len = nlh->nlmsg_len - GENL_HDRLEN;           //len of attributes
+            for (i = 0; NLA_OK(nla, nla_len); nla = NLA_NEXT(nla, nla_len), ++i)
             {
-                l = nla->nla_len - NLA_HDRLEN;  //attribute里的payload就是内核返回给用户的实际数据
-                *len = *len > l ? l : *len;
-                memcpy(buf, NLA_DATA(nla), *len);
-                ret = 0;
-                break;
+                //一条nlmsg里面，可能会包含多个attr
+                printf("%d. nla->nla_type = %d\n", i, nla->nla_type);
+                /* Match the family ID, copy the data to user */
+                if (nla_type == nla->nla_type)
+                {
+                    l = nla->nla_len - NLA_HDRLEN;  //attribute里的payload就是内核返回给用户的实际数据
+                    *len = *len > l ? l : *len;
+                    memcpy(buf, NLA_DATA(nla), *len);
+                    ret = 0;
+                    break;
+                }
             }
+        }else{
+            printf("[%s] payload=%s\n", __FUNCTION__,(char *)NLMSG_DATA(nlh));
         }
     }
  
@@ -366,7 +394,7 @@ static int test_netlink_unicast(void)
         return -1;
  
     id = genlmsg_get_family_id(sockfd, "DOC_EXMPL");  //这里必须先通过family的名字获取到family ID，名字需要与驱动里的一致
-    printf("get family ID[%d]", id);
+    printf("get family ID[%d] for \"DOC_EXMPL\"\n", id);
     if (id <= 0)
     {
         ret = -1;
@@ -374,13 +402,15 @@ static int test_netlink_unicast(void)
     }
  
     pid = getpid();
+    //ret = genlmsg_send(sockfd, NETLINK_GENERIC, pid, DOC_EXMPL_C_ECHO, 1,
     ret = genlmsg_send(sockfd, id, pid, DOC_EXMPL_C_ECHO, 1,
                         DOC_EXMPL_A_MSG, MESSAGE_TO_KERNEL, strlen(MESSAGE_TO_KERNEL) + 1); //向内核发送genl消息
     if (ret < 0)
     {
+        printf("genlmsg_send error! (%d)\n", ret);
         goto out;
     }
- 
+    printf("genlmsg_send success!\n");
     ret = genlmsg_recv(sockfd, (unsigned char *)nlh, len); //等待内核的回复
     if (ret > 0)
     {

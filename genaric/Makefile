@@ -1,4 +1,4 @@
-sub_dir=kernel userspace
+sub_dir=userspace kernel
 CFLAGS += -DNETLINK_UNICAST
 CFLAGS += -DNETLINK_MULTICAST
 

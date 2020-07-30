@@ -58,6 +58,20 @@ static struct genl_family doc_exmpl_genl_family = {
 #else
     .id = 0,   //这里不指定family ID，由内核进行分配
     .ops = &doc_exmpl_genl_ops_echo,
+//    .mcgrps = &doc_exmpl_genl_mcgrp,
+#endif
+};
+
+static struct genl_family test_genl_family = {
+    .hdrsize = 0,             //自定义的头部长度，参考genl数据包结构
+    .name = "TEST_EXMPL",      //这里定义family的名称，user program需要根据这个名字来找到对应的family ID。
+    .version = 1,
+    .maxattr = DOC_EXMPL_A_MAX,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
+    .id = GENL_ID_GENERATE,   //这里不指定family ID，由内核进行分配
+#else
+    .id = 0,   //这里不指定family ID，由内核进行分配
+    .ops = &doc_exmpl_genl_ops_echo,
     .mcgrps = &doc_exmpl_genl_mcgrp,
 #endif
 };
@@ -65,7 +79,7 @@ static struct genl_family doc_exmpl_genl_family = {
 static inline int genl_msg_prepare_usr_msg(u8 cmd, size_t size, pid_t pid, struct sk_buff **skbp)
 {
 	struct sk_buff *skb;
-	
+printk("[%s]=============\n", __FUNCTION__);
 	/* create a new netlink msg */
 	skb = genlmsg_new(size, GFP_KERNEL);
 	if (skb == NULL) {
@@ -82,6 +96,7 @@ static inline int genl_msg_prepare_usr_msg(u8 cmd, size_t size, pid_t pid, struc
 static inline int genl_msg_mk_usr_msg(struct sk_buff *skb, int type, void *data, int len)
 {
 	int rc;
+printk("[%s]=============\n", __FUNCTION__);
 
 	/* add a netlink attribute to a socket buffer */
 	if ((rc = nla_put(skb, type, len, data)) != 0) {
@@ -107,6 +122,7 @@ int genl_msg_send_to_user(void *data, int len, pid_t pid)
 	size_t size;
 	void *head;
 	int rc;
+ printk("[%s]=============\n", __FUNCTION__);
  
 	size = nla_total_size(len); /* total length of attribute including padding */
  
@@ -151,6 +167,7 @@ static int doc_exmpl_echo(struct sk_buff *skb, struct genl_info *info)
     char *str;
     int ret;
  
+printk("[%s]=============\n", __FUNCTION__);
     nlhdr = nlmsg_hdr(skb);
     genlhdr = nlmsg_data(nlhdr);
     nlh = genlmsg_data(genlhdr);
@@ -166,9 +183,9 @@ static int doc_exmpl_echo(struct sk_buff *skb, struct genl_info *info)
 static int __init genetlink_init(void)
 {
     int rc;
-printk(KERN_ERR "[%s] ===========================\n", __FUNCTION__);
-#if 0
+printk("[%s]=============\n", __FUNCTION__);
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
+    printk("[%s] kernel version < 3.13\n", __FUNCTION__);
     /**
      * 1. Registering A Family
      * This function doesn't exist past linux 3.12
@@ -188,23 +205,31 @@ printk(KERN_ERR "[%s] ===========================\n", __FUNCTION__);
     if (rc != 0)
         goto err_out3;
 #elif LINUX_VERSION_CODE < KERNEL_VERSION(4,10,0)
+    printk("[%s] kernel version < 4.10\n", __FUNCTION__);
     rc = genl_register_family_with_ops_groups(&doc_exmpl_genl_family, &doc_exmpl_genl_ops_echo, &doc_exmpl_genl_mcgrp);
     if (rc != 0)
         goto err_out3;
 #else
+    printk("[%s] kernel version >= 4.10\n", __FUNCTION__);
     rc = genl_register_family(&doc_exmpl_genl_family);
     if (rc != 0)
         goto err_out3;
+#if 0
+    rc = genl_register_family(&test_genl_family);
+    if (rc != 0)
+        goto err_out3;
+#endif
 #endif
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
-    printk(KERN_ERR "doc_exmpl_genl_family.id=%d", doc_exmpl_genl_family.id);
-    printk(KERN_ERR "doc_exmpl_genl_mcgrp.id=%d", doc_exmpl_genl_mcgrp.id);
+    printk("doc_exmpl_genl_family.id=%d", doc_exmpl_genl_family.id);
+//    printk("test_genl_family.id=%d", test_genl_family.id);
+    printk("doc_exmpl_genl_mcgrp.id=%d", doc_exmpl_genl_mcgrp.id);
 #else
-    printk(KERN_ERR "doc_exmpl_genl_family.id=%d", doc_exmpl_genl_family.id);
+    printk("doc_exmpl_genl_family.id=%d", doc_exmpl_genl_family.id);
+//    printk("test_genl_family.id=%d", test_genl_family.id);
 #endif
-    printk(KERN_ERR "genetlink_init OK");
-printk(KERN_ERR "[%s]===========================\n", __FUNCTION__);
+    printk("genetlink_init OK");
     return 0;
  
 err_out3:
@@ -215,14 +240,13 @@ err_out2:
     genl_unregister_family(&doc_exmpl_genl_family);
 err_out1:
     printk(KERN_ERR "Error occured while inserting generic netlink example module\n");
-printk(KERN_ERR "[%s]===========================\n", __FUNCTION__);
-#endif
     return rc;
 }
  
 static void __exit genetlink_exit(void)
 {
-    printk(KERN_ERR "Generic Netlink Example Module unloaded.");
+printk("[%s]=============\n", __FUNCTION__);
+    printk("Generic Netlink Example Module unloaded.");
  
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
     genl_unregister_mc_group(&doc_exmpl_genl_family, &doc_exmpl_genl_mcgrp);
