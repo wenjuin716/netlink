@@ -1,6 +1,7 @@
 //Taken from https://stackoverflow.com/questions/15215865/netlink-sockets-in-c-using-the-3-x-linux-kernel?lq=1
 
 #include <sys/socket.h>
+#include <linux/socket.h>
 #include <linux/netlink.h>
 #include <stdlib.h>
 #include <string.h>
@@ -66,17 +67,14 @@ int main(int argc, char **argv)
   dest_addr.nl_family = AF_NETLINK;
   dest_addr.nl_pid = 0; /* For Linux Kernel */
 
-#ifndef NETLINK_MULTICAST
-  dest_addr.nl_groups = 0; /* unicast */
-#else
-//  dest_addr.nl_groups = nl_group; /* multicast */
+#ifdef NETLINK_MULTICAST
   /*
    * 270 is SOL_NETLINK. See
    * http://lxr.free-electrons.com/source/include/linux/socket.h?v=4.1#L314
    * and
    * https://stackoverflow.com/questions/17732044/
    */
-  if (setsockopt(sock_fd, SOL_NETLINK, NETLINK_ADD_MEMBERSHIP, &nl_group, sizeof(nl_group)) < 0) {
+  if (setsockopt(sock_fd, 270/*SOL_NETLINK*/, NETLINK_ADD_MEMBERSHIP, &nl_group, sizeof(nl_group)) < 0) {
       printf("setsockopt < 0, %s\n", strerror(errno));
       return -1;
   }

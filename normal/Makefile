@@ -1,6 +1,4 @@
-sub_dir=kernel userspace
-CFLAGS += -DNETLINK_UNICAST
-CFLAGS += -DNETLINK_MULTICAST
+sub_dir=userspace kernel
 
 export CFLAGS
 all: $(sub_dir)
