@@ -2,8 +2,9 @@
 #include <net/netlink.h>
 #include <net/genetlink.h>
 #include <linux/version.h>
- 
+
 #define TEST_GENL_MSG_FROM_KERNEL   "Hello from kernel space!!!"
+#define GENL_GROUP	(1<<0)
  
 /* handler
  * message handling code goes here; return 0 on success, negative
@@ -16,6 +17,8 @@ static int doc_exmpl_echo(struct sk_buff *skb, struct genl_info *info);
 enum {
       DOC_EXMPL_A_UNSPEC,
       DOC_EXMPL_A_MSG,
+      DOC_EXMPL_A_MSG_V2,
+      DOC_EXMPL_A_MSG_V3,
       __DOC_EXMPL_A_MAX,
 };
 #define DOC_EXMPL_A_MAX (__DOC_EXMPL_A_MAX - 1)
@@ -34,13 +37,15 @@ enum {
 #define DOC_EXMPL_C_MAX (__DOC_EXMPL_C_MAX - 1)
  
 /* operation definition 将命令command echo和具体的handler对应起来 */
-static struct genl_ops doc_exmpl_genl_ops_echo = {
+static struct genl_ops doc_exmpl_genl_ops_echo[] = {
+{
     .cmd = DOC_EXMPL_C_ECHO,
     .flags = 0,
     .policy = doc_exmpl_genl_policy,
     .doit = doc_exmpl_echo,
     .dumpit = NULL,
     .done = NULL,
+},
 };
  
 static struct genl_multicast_group doc_exmpl_genl_mcgrp = {
@@ -57,22 +62,9 @@ static struct genl_family doc_exmpl_genl_family = {
     .id = GENL_ID_GENERATE,   //这里不指定family ID，由内核进行分配
 #else
     .id = 0,   //这里不指定family ID，由内核进行分配
-    .ops = &doc_exmpl_genl_ops_echo,
+    .ops = doc_exmpl_genl_ops_echo,
+    .n_ops = (sizeof(doc_exmpl_genl_ops_echo)/sizeof(struct genl_ops)),
 //    .mcgrps = &doc_exmpl_genl_mcgrp,
-#endif
-};
-
-static struct genl_family test_genl_family = {
-    .hdrsize = 0,             //自定义的头部长度，参考genl数据包结构
-    .name = "TEST_EXMPL",      //这里定义family的名称，user program需要根据这个名字来找到对应的family ID。
-    .version = 1,
-    .maxattr = DOC_EXMPL_A_MAX,
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
-    .id = GENL_ID_GENERATE,   //这里不指定family ID，由内核进行分配
-#else
-    .id = 0,   //这里不指定family ID，由内核进行分配
-    .ops = &doc_exmpl_genl_ops_echo,
-    .mcgrps = &doc_exmpl_genl_mcgrp,
 #endif
 };
  
@@ -149,11 +141,24 @@ int genl_msg_send_to_user(void *data, int len, pid_t pid)
 	genlmsg_end(skb, head);
 #endif
 
+#if 1
 	rc = genlmsg_unicast(&init_net, skb, pid);
 	if (rc < 0) {
 		return rc;
 	}
-
+#else
+	if(pid){
+		rc = genlmsg_unicast(&init_net, skb, pid);
+		if (rc < 0) {
+			return rc;
+		}
+	}else{
+		rc = genlmsg_multicast(skb, 0, GENL_GROUP, 0);
+		if (rc < 0) {
+			return rc;
+		}
+	}
+#endif
 	return 0;
 }
  
@@ -179,6 +184,35 @@ printk("[%s]=============\n", __FUNCTION__);
  
     return ret;
 }
+
+#if 0
+struct timer_list danny_timer;
+static int danny_do(void)
+{
+    ret = genl_msg_send_to_user(TEST_GENL_MSG_FROM_KERNEL,
+            strlen(TEST_GENL_MSG_FROM_KERNEL) + 1,  0);
+    danny_timer.expires = jiffies + 10HZ;
+    add_timer(&danny_timer);
+}
+
+static void danny_timer_init(void)
+{
+    /* Timer 初始化 */
+   init_timer(&danny_timer);
+
+   /* define timer 要執行之函式 */
+  danny_timer.function = danny_do;
+
+  /* define timer 傳入函式之 Data */
+  danny_timer.data = ((unsigned long) 0);
+
+  /* define timer Delay 1秒的時間 */
+  danny_timer.expires = jiffies + 10HZ;
+
+  /* 啟動 Timer*/
+  add_timer(&danny_timer);
+}
+#endif
  
 static int __init genetlink_init(void)
 {
@@ -214,24 +248,19 @@ printk("[%s]=============\n", __FUNCTION__);
     rc = genl_register_family(&doc_exmpl_genl_family);
     if (rc != 0)
         goto err_out3;
-#if 0
-    rc = genl_register_family(&test_genl_family);
-    if (rc != 0)
-        goto err_out3;
-#endif
 #endif
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
-    printk("doc_exmpl_genl_family.id=%d", doc_exmpl_genl_family.id);
+    printk("[%d]doc_exmpl_genl_family.id=%d\n", __LINE__, doc_exmpl_genl_family.id);
 //    printk("test_genl_family.id=%d", test_genl_family.id);
-    printk("doc_exmpl_genl_mcgrp.id=%d", doc_exmpl_genl_mcgrp.id);
+    printk("[%d]doc_exmpl_genl_mcgrp.id=%d\n", __LINE__, doc_exmpl_genl_mcgrp.id);
 #else
-    printk("doc_exmpl_genl_family.id=%d", doc_exmpl_genl_family.id);
+    printk("[%d]doc_exmpl_genl_family.id=%d\n", __LINE__, doc_exmpl_genl_family.id);
 //    printk("test_genl_family.id=%d", test_genl_family.id);
 #endif
-    printk("genetlink_init OK");
-    return 0;
- 
+    printk("genetlink_init OK\n");
+
+    return rc; 
 err_out3:
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
     genl_unregister_ops(&doc_exmpl_genl_family, &doc_exmpl_genl_ops_echo);

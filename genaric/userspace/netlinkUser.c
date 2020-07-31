@@ -38,8 +38,6 @@ enum {
  
 #define MESSAGE_TO_KERNEL   "Hello World from user space!"
  
- 
- 
 /**
  * nla_attr_size - length of attribute size, NOT including padding
  * @param payload   length of payload
@@ -181,16 +179,6 @@ static int genlmsg_send(int sockfd, unsigned short nlmsg_type, unsigned int nlms
     memset(&nladdr, 0, sizeof(nladdr));
     nladdr.nl_family = AF_NETLINK;
  
-#if 1
-unsigned char *tmp=(char*)buf;
-int tlen=0;
-while(tlen<len) {
-  if(tlen%8==0) printf("\n");
-  printf("%02x ", *((char *)tmp+tlen));
-  tlen++;
-}
-printf("\n");
-#endif
     count = 0;
     ret = 0;
     do {
@@ -209,10 +197,20 @@ printf("\n");
         {
             count += ret;
         }
- 
+	printf("count=%d\n", count) ;
     }while (count < len);
- 
- 
+  
+#ifdef DEBUG
+    unsigned char *tmp=(char*)buf;
+    int tlen=0;
+    printf("[%s] dump packet, len=%d\n", __FUNCTION__, len);
+    while(tlen<len) {
+        if(tlen%8==0) printf("\n\t");
+        printf("%02x ", *((char *)tmp+tlen));
+        tlen++;
+    }
+    printf("\n");
+#endif
 out:
     genlmsg_free(buf);
  
@@ -272,16 +270,6 @@ static int genlmsg_dispatch(struct nlmsghdr *nlmsghdr, unsigned int nlh_len,
     if (!nlmsghdr || !buf || !len)
         return -1;
 
-#if 1
-char *tmp=(char*)nlmsghdr;
-int tlen=0;
-while(tlen<nlh_len) {
-  if(tlen%8==0) printf("\n");
-  printf("%.02x ", *((char *)tmp+tlen));
-  tlen++;
-}
-printf("\n");
-#endif
     printf("nlmsg_type = %d\n", nlmsghdr->nlmsg_type);
 #if 0
     if (nlmsg_type && (nlmsghdr->nlmsg_type != nlmsg_type)){
@@ -303,31 +291,38 @@ printf("\n");
  
         if (nlh->nlmsg_type == NLMSG_ERROR)
         {
+#ifdef DEBUG
+            char *tmp=(char*)nlmsghdr;
+            int tlen=0;
+            printf("[%s] dump packet, len=%d\n", __FUNCTION__, nlh_len);
+            while(tlen<nlh_len) {
+                if((tlen%8==0)) printf("\n\t");
+                printf("%.02x ", *((char *)tmp+tlen));
+                tlen++;
+            }
+            printf("\n");
+#endif
             printf("get NLMSG_ERROR\n");
             ret = -1;
             break;
         }
 
-	if(nlmsghdr->nlmsg_type == NETLINK_GENERIC){ 
-            glh = (struct genlmsghdr *)NLMSG_DATA(nlh);
-            nla = (struct nlattr *)GENLMSG_DATA(glh);   //the first attribute
-            nla_len = nlh->nlmsg_len - GENL_HDRLEN;           //len of attributes
-            for (i = 0; NLA_OK(nla, nla_len); nla = NLA_NEXT(nla, nla_len), ++i)
+        glh = (struct genlmsghdr *)NLMSG_DATA(nlh);
+        nla = (struct nlattr *)GENLMSG_DATA(glh);   //the first attribute
+        nla_len = nlh->nlmsg_len - GENL_HDRLEN;           //len of attributes
+        for (i = 0; NLA_OK(nla, nla_len); nla = NLA_NEXT(nla, nla_len), ++i)
+        {
+            //一条nlmsg里面，可能会包含多个attr
+            printf("%d. nla->nla_type = %d\n", i, nla->nla_type);
+            /* Match the family ID, copy the data to user */
+            if (nla_type == nla->nla_type)
             {
-                //一条nlmsg里面，可能会包含多个attr
-                printf("%d. nla->nla_type = %d\n", i, nla->nla_type);
-                /* Match the family ID, copy the data to user */
-                if (nla_type == nla->nla_type)
-                {
-                    l = nla->nla_len - NLA_HDRLEN;  //attribute里的payload就是内核返回给用户的实际数据
-                    *len = *len > l ? l : *len;
-                    memcpy(buf, NLA_DATA(nla), *len);
-                    ret = 0;
-                    break;
-                }
+                l = nla->nla_len - NLA_HDRLEN;  //attribute里的payload就是内核返回给用户的实际数据
+                *len = *len > l ? l : *len;
+                memcpy(buf, NLA_DATA(nla), *len);
+                ret = 0;
+                break;
             }
-        }else{
-            printf("[%s] payload=%s\n", __FUNCTION__,(char *)NLMSG_DATA(nlh));
         }
     }
  
@@ -392,7 +387,7 @@ static int test_netlink_unicast(void)
     sockfd = genlmsg_open();
     if (sockfd < 0)
         return -1;
- 
+
     id = genlmsg_get_family_id(sockfd, "DOC_EXMPL");  //这里必须先通过family的名字获取到family ID，名字需要与驱动里的一致
     printf("get family ID[%d] for \"DOC_EXMPL\"\n", id);
     if (id <= 0)
@@ -400,9 +395,10 @@ static int test_netlink_unicast(void)
         ret = -1;
         goto out;
     }
- 
+
     pid = getpid();
-    //ret = genlmsg_send(sockfd, NETLINK_GENERIC, pid, DOC_EXMPL_C_ECHO, 1,
+    printf("pid=%x\n", pid);
+    //ret = genlmsg_send(sockfd, NETLINK_GENERIC, 0, DOC_EXMPL_C_ECHO, 1,
     ret = genlmsg_send(sockfd, id, pid, DOC_EXMPL_C_ECHO, 1,
                         DOC_EXMPL_A_MSG, MESSAGE_TO_KERNEL, strlen(MESSAGE_TO_KERNEL) + 1); //向内核发送genl消息
     if (ret < 0)

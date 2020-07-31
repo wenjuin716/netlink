@@ -6,6 +6,7 @@ OBJS=netlinkUser.o
 #CFLAGS+=-I$(LIB_DIR)/install/include
 #LDFLAGS+=-L$(LIB_DIR)/install/lib/ -lnl-3 -lnl-genl-3 -lnl-idiag-3 -lnl-nf-3 -lnl-route-3
 
+CFLAGS+=-DDEBUG
 all: $(OBJS)
 	$(CC) $(CFLAGS) $(LDFLAGS) $^ -o $(EXEC)
 
