@@ -236,19 +236,19 @@ static int __init genetlink_init(void)
     if (rc != 0)
         goto err_out1;
  
-    rc = genl_register_ops(&doc_exmpl_genl_family, &doc_exmpl_genl_ops_echo);
+    rc = genl_register_ops(&doc_exmpl_genl_family, doc_exmpl_genl_ops_echo);
     if (rc != 0)
         goto err_out2;
  
     /*
      * for multicast
      */
-    rc = genl_register_mc_group(&doc_exmpl_genl_family, &doc_exmpl_genl_mcgrp);
+    rc = genl_register_mc_group(&doc_exmpl_genl_family, doc_exmpl_genl_mcgrp);
     if (rc != 0)
         goto err_out3;
 #elif LINUX_VERSION_CODE < KERNEL_VERSION(4,10,0)
     printk("[%s] kernel version < 4.10\n", __FUNCTION__);
-    rc = genl_register_family_with_ops_groups(&doc_exmpl_genl_family, &doc_exmpl_genl_ops_echo, &doc_exmpl_genl_mcgrp);
+    rc = genl_register_family_with_ops_groups(&doc_exmpl_genl_family, doc_exmpl_genl_ops_echo, doc_exmpl_genl_mcgrp);
     if (rc != 0)
         goto err_out3;
 #else
@@ -269,7 +269,7 @@ static int __init genetlink_init(void)
     return rc; 
 err_out3:
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
-    genl_unregister_ops(&doc_exmpl_genl_family, &doc_exmpl_genl_ops_echo);
+    genl_unregister_ops(&doc_exmpl_genl_family, doc_exmpl_genl_ops_echo);
 #endif
 err_out2:
     genl_unregister_family(&doc_exmpl_genl_family);
@@ -284,11 +284,10 @@ printk("[%s]=============\n", __FUNCTION__);
     printk("Generic Netlink Example Module unloaded.");
  
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
-    genl_unregister_mc_group(&doc_exmpl_genl_family, &doc_exmpl_genl_mcgrp);
-    genl_unregister_ops(&doc_exmpl_genl_family, &doc_exmpl_genl_ops_echo);
-#else //#elif LINUX_VERSION_CODE < KERNEL_VERSION(4,10,0)
-    genl_unregister_family(&doc_exmpl_genl_family);
+    genl_unregister_mc_group(&doc_exmpl_genl_family, doc_exmpl_genl_mcgrp);
+    genl_unregister_ops(&doc_exmpl_genl_family, doc_exmpl_genl_ops_echo);
 #endif
+    genl_unregister_family(&doc_exmpl_genl_family);
 }
 
 module_init(genetlink_init);
