@@ -2,7 +2,10 @@ KDIR := /lib/modules/$(shell uname -r)/build
 
 #obj-m += netlinkKernel.o
 obj-m += netlinkKernel.o rmmod_force.o
-CFLAGS_netlinkKernel.o := $(CFLAGS)
+#GENL_CFLAGS= -DNETLINK_UNICAST -DNETLINK_MULTICAST
+GENL_CFLAGS= -DNETLINK_UNICAST
+#GENL_CFLAGS= -DNETLINK_MULTICAST
+CFLAGS_netlinkKernel.o := $(GENL_CFLAGS)
 all:
 	$(MAKE) -C $(KDIR) SUBDIRS=$(PWD) modules
 

@@ -20,11 +20,15 @@
 #define NLA_OK(nla,len)         ((len) >= (int)sizeof(struct nlattr) && \
                                     (nla)->nla_len >= sizeof(struct nlattr) && \
                                     (nla)->nla_len <= (len))
- 
+
+#define NETLINK_USER_GROUP 0xb
+int nl_group=NETLINK_USER_GROUP;
+
 //copy from kernel driver genl_ops's cmd
 enum {
     DOC_EXMPL_C_UNSPEC,
     DOC_EXMPL_C_ECHO,
+    DOC_EXMPL_C_TMP,
     __DOC_EXMPL_C_MAX,
 };
  
@@ -83,6 +87,19 @@ static int genlmsg_open(void)
         ret = -1;
         goto err_out;
     }
+
+#ifdef NETLINK_MULTICAST
+  /*
+   * 270 is SOL_NETLINK. See
+   * http://lxr.free-electrons.com/source/include/linux/socket.h?v=4.1#L314
+   * and
+   * https://stackoverflow.com/questions/17732044/
+   */
+  if (setsockopt(sockfd, 270/*SOL_NETLINK*/, NETLINK_ADD_MEMBERSHIP, &nl_group, sizeof(nl_group)) < 0) {
+      printf("setsockopt < 0, %s\n", strerror(errno));
+      return -1;
+  }
+#endif
  
     return sockfd;
  
@@ -301,6 +318,7 @@ static int genlmsg_dispatch(struct nlmsghdr *nlmsghdr, unsigned int nlh_len,
                 tlen++;
             }
             printf("\n");
+            printf("Errno=%d\n", *((int *)nlmsghdr+sizeof(struct nlmsghdr)));
 #endif
             printf("get NLMSG_ERROR\n");
             ret = -1;
@@ -360,6 +378,36 @@ static int genlmsg_get_family_id(int sockfd, const char *family_name)
     return id > 0 ? id : -1;
 }
  
+static int genlmsg_get_family_group(int sockfd, const char *family_name)
+{
+    void *buf;
+    int len;
+    __u16 id;
+    int l;
+    int ret;
+ 
+    ret = genlmsg_send(sockfd, GENL_ID_CTRL, 0, CTRL_CMD_GETMCAST_GRP, 1,
+            CTRL_ATTR_MCAST_GRP_NAME, family_name, strlen(family_name) + 1);
+    if (ret < 0)
+        return -1;
+ 
+    len = 256;
+    buf = genlmsg_alloc(&len);
+    if (!buf)
+        return -1;
+ 
+    len = genlmsg_recv(sockfd, buf, len);
+    if (len < 0)
+        return len;
+ 
+    id = 0;
+    l = sizeof(id);
+    genlmsg_dispatch((struct nlmsghdr *)buf, len, 0, CTRL_ATTR_MCAST_GRP_ID, (unsigned char *)&id, &l);
+ 
+    genlmsg_free(buf);
+ 
+    return id > 0 ? id : -1;
+}
 static void genlmsg_close(int sockfd)
 {
     if (sockfd >= 0)
@@ -399,6 +447,7 @@ static int test_netlink_unicast(void)
     pid = getpid();
     printf("pid=%x\n", pid);
     //ret = genlmsg_send(sockfd, NETLINK_GENERIC, 0, DOC_EXMPL_C_ECHO, 1,
+    //ret = genlmsg_send(sockfd, id, pid, DOC_EXMPL_C_TMP, 1,
     ret = genlmsg_send(sockfd, id, pid, DOC_EXMPL_C_ECHO, 1,
                         DOC_EXMPL_A_MSG, MESSAGE_TO_KERNEL, strlen(MESSAGE_TO_KERNEL) + 1); //向内核发送genl消息
     if (ret < 0)

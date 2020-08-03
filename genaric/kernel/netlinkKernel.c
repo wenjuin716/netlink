@@ -4,21 +4,21 @@
 #include <linux/version.h>
 
 #define TEST_GENL_MSG_FROM_KERNEL   "Hello from kernel space!!!"
-#define GENL_GROUP	(1<<0)
+//#define GENL_GROUP	(1<<0)
+#define GENL_GROUP	0x1
  
 /* handler
  * message handling code goes here; return 0 on success, negative
  * values on failure
  */
 static int doc_exmpl_echo(struct sk_buff *skb, struct genl_info *info);
+static int doc_exmpl_tmp(struct sk_buff *skb, struct genl_info *info);
  
  
 /* netlink attributes */
 enum {
       DOC_EXMPL_A_UNSPEC,
       DOC_EXMPL_A_MSG,
-      DOC_EXMPL_A_MSG_V2,
-      DOC_EXMPL_A_MSG_V3,
       __DOC_EXMPL_A_MAX,
 };
 #define DOC_EXMPL_A_MAX (__DOC_EXMPL_A_MAX - 1)
@@ -32,6 +32,7 @@ static struct nla_policy doc_exmpl_genl_policy[DOC_EXMPL_A_MAX + 1] = {
 enum {
     DOC_EXMPL_C_UNSPEC,
     DOC_EXMPL_C_ECHO,
+    DOC_EXMPL_C_TMP,
     __DOC_EXMPL_C_MAX,
 };
 #define DOC_EXMPL_C_MAX (__DOC_EXMPL_C_MAX - 1)
@@ -46,10 +47,19 @@ static struct genl_ops doc_exmpl_genl_ops_echo[] = {
     .dumpit = NULL,
     .done = NULL,
 },
+{
+    .cmd = DOC_EXMPL_C_TMP,
+    .flags = 0,
+    .doit = doc_exmpl_tmp,
+    .dumpit = NULL,
+    .done = NULL,
+},
 };
  
-static struct genl_multicast_group doc_exmpl_genl_mcgrp = {
-        .name = "DOC_EXMPL_GRP",
+static struct genl_multicast_group doc_exmpl_genl_mcgrp[] = {
+{
+    .name = "DOC_EXMPL_GRP",
+},
 };
 
 /* family definition */
@@ -64,14 +74,15 @@ static struct genl_family doc_exmpl_genl_family = {
     .id = 0,   //这里不指定family ID，由内核进行分配
     .ops = doc_exmpl_genl_ops_echo,
     .n_ops = (sizeof(doc_exmpl_genl_ops_echo)/sizeof(struct genl_ops)),
-//    .mcgrps = &doc_exmpl_genl_mcgrp,
+    .mcgrps = doc_exmpl_genl_mcgrp,
+    .n_mcgrps = (sizeof(doc_exmpl_genl_mcgrp)/sizeof(struct genl_multicast_group)),
 #endif
 };
  
 static inline int genl_msg_prepare_usr_msg(u8 cmd, size_t size, pid_t pid, struct sk_buff **skbp)
 {
 	struct sk_buff *skb;
-printk("[%s]=============\n", __FUNCTION__);
+
 	/* create a new netlink msg */
 	skb = genlmsg_new(size, GFP_KERNEL);
 	if (skb == NULL) {
@@ -88,7 +99,6 @@ printk("[%s]=============\n", __FUNCTION__);
 static inline int genl_msg_mk_usr_msg(struct sk_buff *skb, int type, void *data, int len)
 {
 	int rc;
-printk("[%s]=============\n", __FUNCTION__);
 
 	/* add a netlink attribute to a socket buffer */
 	if ((rc = nla_put(skb, type, len, data)) != 0) {
@@ -114,7 +124,6 @@ int genl_msg_send_to_user(void *data, int len, pid_t pid)
 	size_t size;
 	void *head;
 	int rc;
- printk("[%s]=============\n", __FUNCTION__);
  
 	size = nla_total_size(len); /* total length of attribute including padding */
  
@@ -141,22 +150,30 @@ int genl_msg_send_to_user(void *data, int len, pid_t pid)
 	genlmsg_end(skb, head);
 #endif
 
-#if 1
+#ifdef NETLINK_UNICAST
 	rc = genlmsg_unicast(&init_net, skb, pid);
 	if (rc < 0) {
 		return rc;
 	}
+#endif
+#ifdef NETLINK_MULTICAST
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
+	/*
+	static inline int genlmsg_multicast(struct sk_buff *skb, u32 portid,
+					    unsigned int group, gfp_t flags)
+	*/
+	rc = genlmsg_multicast(skb, 0, GENL_GROUP, GFP_KERNEL);
 #else
-	if(pid){
-		rc = genlmsg_unicast(&init_net, skb, pid);
-		if (rc < 0) {
-			return rc;
-		}
-	}else{
-		rc = genlmsg_multicast(skb, 0, GENL_GROUP, 0);
-		if (rc < 0) {
-			return rc;
-		}
+	/*
+	static inline int genlmsg_multicast(const struct genl_family *family,
+					    struct sk_buff *skb, u32 portid,
+					    unsigned int group, gfp_t flags)
+	*/
+	rc = genlmsg_multicast(&doc_exmpl_genl_family, skb, 0, GENL_GROUP, GFP_KERNEL);
+#endif
+	if (rc < 0) {
+                printk(KERN_ERR "Errno=%d\n", rc);
+		return rc;
 	}
 #endif
 	return 0;
@@ -172,12 +189,11 @@ static int doc_exmpl_echo(struct sk_buff *skb, struct genl_info *info)
     char *str;
     int ret;
  
-printk("[%s]=============\n", __FUNCTION__);
     nlhdr = nlmsg_hdr(skb);
     genlhdr = nlmsg_data(nlhdr);
     nlh = genlmsg_data(genlhdr);
     str = nla_data(nlh);
-    printk("doc_exmpl_echo get: %s\n", str);
+    printk("%s get: %s\n", __FUNCTION__, str);
  
     ret = genl_msg_send_to_user(TEST_GENL_MSG_FROM_KERNEL,
             strlen(TEST_GENL_MSG_FROM_KERNEL) + 1,  nlhdr->nlmsg_pid);
@@ -185,39 +201,31 @@ printk("[%s]=============\n", __FUNCTION__);
     return ret;
 }
 
-#if 0
-struct timer_list danny_timer;
-static int danny_do(void)
+static int doc_exmpl_tmp(struct sk_buff *skb, struct genl_info *info)
 {
-    ret = genl_msg_send_to_user(TEST_GENL_MSG_FROM_KERNEL,
-            strlen(TEST_GENL_MSG_FROM_KERNEL) + 1,  0);
-    danny_timer.expires = jiffies + 10HZ;
-    add_timer(&danny_timer);
-}
-
-static void danny_timer_init(void)
-{
-    /* Timer 初始化 */
-   init_timer(&danny_timer);
-
-   /* define timer 要執行之函式 */
-  danny_timer.function = danny_do;
-
-  /* define timer 傳入函式之 Data */
-  danny_timer.data = ((unsigned long) 0);
-
-  /* define timer Delay 1秒的時間 */
-  danny_timer.expires = jiffies + 10HZ;
-
-  /* 啟動 Timer*/
-  add_timer(&danny_timer);
-}
-#endif
+    /* message handling code goes here; return 0 on success, negative values on failure */
+    struct nlmsghdr *nlhdr;
+    struct genlmsghdr *genlhdr;
+    struct nlattr *nlh;
+    char *str;
+    int ret;
  
+    nlhdr = nlmsg_hdr(skb);
+    genlhdr = nlmsg_data(nlhdr);
+    nlh = genlmsg_data(genlhdr);
+    str = nla_data(nlh);
+    printk("%s get: %s\n", __FUNCTION__, str);
+ 
+    ret = genl_msg_send_to_user(TEST_GENL_MSG_FROM_KERNEL,
+            strlen(TEST_GENL_MSG_FROM_KERNEL) + 1,  nlhdr->nlmsg_pid);
+ 
+    return ret;
+}
+
 static int __init genetlink_init(void)
 {
     int rc;
-printk("[%s]=============\n", __FUNCTION__);
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
     printk("[%s] kernel version < 3.13\n", __FUNCTION__);
     /**
@@ -252,11 +260,9 @@ printk("[%s]=============\n", __FUNCTION__);
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
     printk("[%d]doc_exmpl_genl_family.id=%d\n", __LINE__, doc_exmpl_genl_family.id);
-//    printk("test_genl_family.id=%d", test_genl_family.id);
     printk("[%d]doc_exmpl_genl_mcgrp.id=%d\n", __LINE__, doc_exmpl_genl_mcgrp.id);
 #else
     printk("[%d]doc_exmpl_genl_family.id=%d\n", __LINE__, doc_exmpl_genl_family.id);
-//    printk("test_genl_family.id=%d", test_genl_family.id);
 #endif
     printk("genetlink_init OK\n");
 
